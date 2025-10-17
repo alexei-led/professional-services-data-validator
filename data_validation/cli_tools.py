@@ -82,6 +82,10 @@ CONNECTION_SOURCE_FIELDS = {
             "storage_api_endpoint",
             '(Optional) GCP BigQuery Storage API endpoint (e.g. "https://bigquerystorage-mypsc.p.googleapis.com")',
         ],
+        [
+            "quota_project_id",
+            "(Optional) GCP BigQuery billing project id",
+        ],
     ],
     consts.SOURCE_TYPE_TERADATA: [
         ["host", "Desired Teradata host"],

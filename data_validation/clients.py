@@ -16,7 +16,7 @@
 from contextlib import contextmanager
 import copy
 import logging
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 import warnings
 
 import google.oauth2.service_account
@@ -95,15 +95,22 @@ except ImportError:
 
 
 def get_google_bigquery_client(
-    project_id: str, credentials=None, api_endpoint: str = None
+    project_id: str,
+    credentials=None,
+    api_endpoint: Optional[str] = None,
+    quota_project_id: Optional[str] = None,
 ):
     info = client_info.get_http_client_info()
     job_config = bigquery.QueryJobConfig(
         connection_properties=[bigquery.ConnectionProperty("time_zone", "UTC")]
     )
-    options = None
     if api_endpoint:
         options = client_options.ClientOptions(api_endpoint=api_endpoint)
+    else:
+        options = client_options.ClientOptions()
+    if quota_project_id:
+        options.quota_project_id = quota_project_id
+
     return bigquery.Client(
         project=project_id,
         client_info=info,
@@ -113,10 +120,18 @@ def get_google_bigquery_client(
     )
 
 
-def _get_google_bqstorage_client(credentials=None, api_endpoint: str = None):
-    options = None
+def _get_google_bqstorage_client(
+    credentials=None,
+    api_endpoint: Optional[str] = None,
+    quota_project_id: Optional[str] = None,
+):
     if api_endpoint:
         options = client_options.ClientOptions(api_endpoint=api_endpoint)
+    else:
+        options = client_options.ClientOptions()
+    if quota_project_id:
+        options.quota_project_id = quota_project_id
+
     from google.cloud import bigquery_storage_v1 as bigquery_storage
 
     return bigquery_storage.BigQueryReadClient(
@@ -129,16 +144,22 @@ def get_bigquery_client(
     project_id: str,
     dataset_id: str = "",
     credentials=None,
-    api_endpoint: str = None,
-    storage_api_endpoint: str = None,
+    api_endpoint: Optional[str] = None,
+    storage_api_endpoint: Optional[str] = None,
+    quota_project_id: Optional[str] = None,
 ):
     google_client = get_google_bigquery_client(
-        project_id, credentials=credentials, api_endpoint=api_endpoint
+        project_id,
+        credentials=credentials,
+        api_endpoint=api_endpoint,
+        quota_project_id=quota_project_id,
     )
     bqstorage_client = None
     if storage_api_endpoint:
         bqstorage_client = _get_google_bqstorage_client(
-            credentials=credentials, api_endpoint=storage_api_endpoint
+            credentials=credentials,
+            api_endpoint=storage_api_endpoint,
+            quota_project_id=quota_project_id,
         )
 
     return bigquery_connect(
