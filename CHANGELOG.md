@@ -2,6 +2,20 @@
 
 ## Untagged
 
+## [8.3.0](https://github.com/GoogleCloudPlatform/professional-services-data-validator/compare/v8.2.0...v8.3.0) (2025-10-20)
+
+
+### Features
+
+* Improve generate-table-partitions for custom queries ([#1604](https://github.com/GoogleCloudPlatform/professional-services-data-validator/issues/1604)) ([a4eb9b0](https://github.com/GoogleCloudPlatform/professional-services-data-validator/commit/a4eb9b07a07da452153cfe109af6cda7f799f90a))
+
+
+### Bug Fixes
+
+* Lower case schema.table find-tables keys (if possible) when matching names ([#1601](https://github.com/GoogleCloudPlatform/professional-services-data-validator/issues/1601)) ([9b0ce24](https://github.com/GoogleCloudPlatform/professional-services-data-validator/commit/9b0ce24d68e77b1b6f2453daf5afdd88ed2e5a0a))
+* Prevent result handler credentials from being stored in config files ([#1609](https://github.com/GoogleCloudPlatform/professional-services-data-validator/issues/1609)) ([ef3df2e](https://github.com/GoogleCloudPlatform/professional-services-data-validator/commit/ef3df2e708e08a6d81551b421ce8fec93c469a5e))
+* Remove implicit "connections" subdirectory from GCS connections path (PSO_DV_CONN_HOME) ([#1598](https://github.com/GoogleCloudPlatform/professional-services-data-validator/issues/1598)) ([b48d666](https://github.com/GoogleCloudPlatform/professional-services-data-validator/commit/b48d6668918d3c60ff700ab3ef2f61c636a18e13))
+
 ## [8.2.0](https://github.com/GoogleCloudPlatform/professional-services-data-validator/compare/v8.1.1...v8.2.0) (2025-09-22)
 
 
