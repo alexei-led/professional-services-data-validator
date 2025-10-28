@@ -405,6 +405,7 @@ def test_get_yaml_validation_block(module_under_test):
     assert list(yaml_config.keys()) == expected_validation_keys
 
 
+@pytest.mark.skip(reason="Requires BigQuery credentials (ADC)")
 def test_get_result_handler(module_under_test):
     config_manager = module_under_test.ConfigManager(
         SAMPLE_CONFIG, MockIbisClient(), MockIbisClient(), verbose=False
