@@ -22,10 +22,15 @@ SQL features that sqlglot doesn't natively parse, such as:
 - GLOBAL JOIN modifiers
 
 The patches are applied automatically when this module is imported.
+
+Additionally, this module patches sqlglot's ClickHouse dialect to preserve
+identifier case when rendering Command expressions, as ClickHouse identifiers
+are case-sensitive.
 """
 
 import sqlglot as sg
 from sqlglot import exp
+from sqlglot.dialects import clickhouse
 import ibis.expr.operations as ops
 from ibis.backends.clickhouse.compiler import relations
 
@@ -41,6 +46,33 @@ CLICKHOUSE_SPECIFIC_KEYWORDS = {
     "GLOBAL RIGHT JOIN",
     "GLOBAL FULL JOIN",
 }
+
+
+# Patch sqlglot's ClickHouse generator to preserve identifier case
+# The default implementation uppercases Command content, but ClickHouse
+# identifiers are case-sensitive, so we need to preserve the original case
+
+
+def _patched_command_sql(self, expression: exp.Command) -> str:
+    """
+    Preserve case when rendering Command expressions for ClickHouse.
+
+    The original sqlglot implementation uppercases the command content via
+    `.upper()`, but ClickHouse identifiers are case-sensitive (e.g.,
+    'mydb' != 'MYDB'). This patched version preserves the original case
+    from the SQL query.
+
+    Uses self.sql() instead of expression.text() to properly handle both
+    raw text commands and programmatically constructed AST children.
+    """
+    # Use self.sql() for both parts to handle AST children correctly
+    # and strip to maintain consistent formatting
+    command_part = self.sql(expression, "this")
+    expression_part = self.sql(expression, "expression").strip()
+    return f"{command_part} {expression_part}" if expression_part else command_part
+
+
+clickhouse.ClickHouse.Generator.command_sql = _patched_command_sql
 
 
 @relations.translate_rel.register(ops.SQLQueryResult)
