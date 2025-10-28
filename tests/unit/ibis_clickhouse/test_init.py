@@ -210,3 +210,97 @@ def test_complex_query_with_cte_and_array_join(module_under_test):
     # Verify successful translation with Command wrapper
     assert isinstance(result, exp.Subquery)
     assert isinstance(result.this, exp.Command)
+
+
+@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
+def test_command_sql_patch_applied(module_under_test):
+    """Test that the command_sql patch is applied and preserves case."""
+    from sqlglot import exp
+    from sqlglot.dialects import clickhouse
+
+    # Verify the patch is applied
+    assert hasattr(clickhouse.ClickHouse.Generator, "command_sql")
+
+    # Verify the patched function actually preserves case by rendering a command
+    generator = clickhouse.ClickHouse.Generator()
+    cmd = exp.Command(this="SELECT * FROM testDb.testTable")
+    result = generator.command_sql(cmd)
+
+    # The patched version should preserve case (not uppercase everything)
+    assert "testDb.testTable" in result
+    assert "TESTDB.TESTTABLE" not in result
+
+
+@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
+def test_lowercase_identifiers_preserved(module_under_test):
+    """Test that lowercase identifiers are preserved in ARRAY JOIN queries.
+
+    ClickHouse identifiers are case-sensitive, so 'mydb.mytable' != 'MYDB.MYTABLE'.
+    This test verifies that our patch preserves the original case.
+    """
+
+    handler = module_under_test._query_clickhouse_patched
+
+    # Use lowercase database and table names
+    mock_op = mock.Mock()
+    mock_op.query = """
+        SELECT T.project_id, item_value
+        FROM testdb.testtable AS T
+        ARRAY JOIN T.items AS item_value
+        WHERE T.project_id = 'test'
+    """
+
+    aliases = {mock_op: "_"}
+    result = handler(mock_op, aliases=aliases)
+
+    # Generate SQL
+    result_sql = result.sql(dialect="clickhouse")
+
+    # Verify lowercase identifiers are preserved (not uppercased)
+    assert "testdb.testtable" in result_sql
+    assert "TESTDB.TESTTABLE" not in result_sql
+
+
+@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
+def test_mixed_case_identifiers_preserved(module_under_test):
+    """Test that mixed-case identifiers are preserved in ARRAY JOIN queries."""
+
+    handler = module_under_test._query_clickhouse_patched
+
+    # Use mixed-case database and table names
+    mock_op = mock.Mock()
+    mock_op.query = """
+        SELECT T.userId, event_item
+        FROM myDatabase.myTable AS T
+        ARRAY JOIN T.events AS event_item
+        WHERE T.userId > 100
+    """
+
+    aliases = {mock_op: "_"}
+    result = handler(mock_op, aliases=aliases)
+
+    # Generate SQL
+    result_sql = result.sql(dialect="clickhouse")
+
+    # Verify mixed-case identifiers are preserved
+    assert "myDatabase.myTable" in result_sql
+    assert "MYDATABASE.MYTABLE" not in result_sql
+
+
+@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
+def test_case_sensitivity_with_final_modifier(module_under_test):
+    """Test that case is preserved with FINAL modifier."""
+
+    handler = module_under_test._query_clickhouse_patched
+
+    mock_op = mock.Mock()
+    mock_op.query = "SELECT * FROM analyticsDB.events FINAL WHERE date = today()"
+
+    aliases = {mock_op: "_"}
+    result = handler(mock_op, aliases=aliases)
+
+    result_sql = result.sql(dialect="clickhouse")
+
+    # Verify case preservation
+    assert "analyticsDB.events" in result_sql
+    assert "ANALYTICSDB.EVENTS" not in result_sql
