@@ -94,13 +94,22 @@ def test_generate_report_with_too_many_rows(module_under_test):
 @pytest.mark.parametrize(
     ("input_df"),
     [
-        pandas_df(100, 1),
-        pandas_df(250, 1),
-        pandas_df(500, 1),
+        pandas_df(100, 1),  # Below COMBINER_COLUMN_SLICE_WIDTH (120) - no slicing
+        pandas_df(
+            130, 1
+        ),  # Above threshold - validates slicing works (2 slices: 120+10)
     ],
 )
 def test_generate_report_with_many_columns(module_under_test, input_df):
-    """Test that combiner works for tables with many validations (no RecursionError)."""
+    """Test that combiner works for tables with many validations (no RecursionError).
+
+    Tests both code paths:
+    - 100 columns: below threshold, no slicing needed
+    - 130 columns: above threshold, slicing mechanism activated
+
+    This validates the RecursionError fix while keeping test execution fast.
+    Original test used [100, 250, 500] but caused 19s of 24s total test time.
+    """
     validations = {
         _: metadata.ValidationMetadata(
             source_table_name="test_source",
