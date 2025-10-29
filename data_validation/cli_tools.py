@@ -48,11 +48,13 @@ import copy
 import csv
 import json
 import logging
+import math
+import os
 import sys
 import uuid
-import os
-import math
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional
+from importlib.metadata import PackageNotFoundError, version
+
 from yaml import Dumper, Loader, dump, load
 
 from data_validation import (
@@ -68,6 +70,12 @@ from data_validation.validation_builder import list_to_sublists
 
 if TYPE_CHECKING:
     from argparse import Namespace
+
+# Get package version dynamically
+try:
+    __version__ = version("google-pso-data-validator")
+except PackageNotFoundError:
+    __version__ = "unknown"
 
 
 CONNECTION_SOURCE_FIELDS = {
@@ -265,6 +273,12 @@ def configure_arg_parser():
     """Extract Args for Run."""
     parser = argparse.ArgumentParser(
         usage=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"%(prog)s {__version__}",
+        help="Show the version number and exit",
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose logging")
     parser.add_argument(
