@@ -61,6 +61,7 @@ extras_require = {
         "pytest",
         "pytest-cov",
         "pytest-timeout",
+        "pytest-xdist",
     ],
 }
 
