@@ -13,44 +13,19 @@
 # limitations under the License.
 
 """
-ClickHouse-specific patches for ibis to handle database-specific SQL syntax.
+ClickHouse-specific patches for ibis to preserve case-sensitive SQL syntax.
 
-This module patches ibis's ClickHouse compiler to support ClickHouse-specific
-SQL features that sqlglot doesn't natively parse, such as:
-- ARRAY JOIN (and variants: ARRAY INNER JOIN, ARRAY LEFT JOIN)
-- FINAL modifier
-- GLOBAL JOIN modifiers
+ClickHouse is case-sensitive for identifiers, function names, and keywords.
+This module patches ibis's ClickHouse compiler to preserve the exact SQL
+without modification, preventing sqlglot from uppercasing queries.
 
 The patches are applied automatically when this module is imported.
-
-Additionally, this module patches sqlglot's ClickHouse dialect to preserve
-identifier case when rendering Command expressions, as ClickHouse identifiers
-are case-sensitive.
 """
 
-import sqlglot as sg
 from sqlglot import exp
 from sqlglot.dialects import clickhouse
 import ibis.expr.operations as ops
 from ibis.backends.clickhouse.compiler import relations
-
-# ClickHouse-specific keywords that sqlglot doesn't support
-CLICKHOUSE_SPECIFIC_KEYWORDS = {
-    "ARRAY JOIN",
-    "ARRAY INNER JOIN",
-    "ARRAY LEFT JOIN",
-    "FINAL",
-    "GLOBAL JOIN",
-    "GLOBAL INNER JOIN",
-    "GLOBAL LEFT JOIN",
-    "GLOBAL RIGHT JOIN",
-    "GLOBAL FULL JOIN",
-}
-
-
-# Patch sqlglot's ClickHouse generator to preserve identifier case
-# The default implementation uppercases Command content, but ClickHouse
-# identifiers are case-sensitive, so we need to preserve the original case
 
 
 def _patched_command_sql(self, expression: exp.Command) -> str:
@@ -78,14 +53,11 @@ clickhouse.ClickHouse.Generator.command_sql = _patched_command_sql
 @relations.translate_rel.register(ops.SQLQueryResult)
 def _query_clickhouse_patched(op: ops.SQLQueryResult, *, aliases, **_):
     """
-    Patched version of _query that handles ClickHouse-specific syntax.
+    Preserve exact SQL for ClickHouse queries without parsing.
 
-    For queries containing ClickHouse-specific keywords that sqlglot cannot parse,
-    we wrap them using sqlglot.exp.Command which preserves the raw SQL without
-    attempting to parse it. For standard SQL, we use the original parsing approach.
-
-    This allows DVT to validate queries with ClickHouse-specific features like
-    ARRAY JOIN, which are commonly used for unnesting arrays in ClickHouse.
+    ClickHouse is case-sensitive, so we wrap all queries in Command expressions
+    to preserve the original SQL exactly as written, including function names,
+    identifiers, and keywords.
 
     Parameters
     ----------
@@ -99,22 +71,7 @@ def _query_clickhouse_patched(op: ops.SQLQueryResult, *, aliases, **_):
     Returns
     -------
     sqlglot.expressions.Subquery
-        A subquery expression wrapping the SQL query
+        A subquery expression wrapping the raw SQL query
     """
-    query_upper = op.query.upper()
-
-    # Check if query contains ClickHouse-specific syntax that sqlglot can't parse
-    has_clickhouse_syntax = any(
-        kw in query_upper for kw in CLICKHOUSE_SPECIFIC_KEYWORDS
-    )
-
-    if has_clickhouse_syntax:
-        # Use Command to wrap raw SQL without parsing
-        # This preserves ClickHouse-specific syntax that sqlglot doesn't understand
-        cmd = exp.Command(this=op.query)
-        return exp.Subquery(this=cmd, alias=aliases.get(op, "_"))
-    else:
-        # Use original parsing for standard SQL
-        # This provides sqlglot's validation and optimization for standard queries
-        res = sg.parse_one(op.query, read="clickhouse")
-        return res.subquery(aliases.get(op, "_"))
+    cmd = exp.Command(this=op.query)
+    return exp.Subquery(this=cmd, alias=aliases.get(op, "_"))

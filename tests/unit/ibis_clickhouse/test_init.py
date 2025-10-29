@@ -1,5 +1,8 @@
 """Tests for ClickHouse ibis backend patches.
 
+Verifies that ClickHouse queries preserve exact SQL including case-sensitive
+identifiers and function names, since ClickHouse is case-sensitive.
+
 Following DVT's testing patterns:
 - Test patch registration (verify monkey-patch applied)
 - Test handler function behavior directly with minimal mocks
@@ -36,8 +39,8 @@ def test_import(module_under_test):
 
 
 @pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
-def test_array_join_patch_registered(module_under_test):
-    """Test that the ARRAY JOIN patch is registered in translate_rel."""
+def test_clickhouse_patch_registered(module_under_test):
+    """Test that the ClickHouse translate_rel patch is registered."""
     import ibis.expr.operations as ops
     from ibis.backends.clickhouse.compiler import relations
 
@@ -47,169 +50,33 @@ def test_array_join_patch_registered(module_under_test):
     # Get the registered function
     handler = relations.translate_rel.registry[ops.SQLQueryResult]
 
-    # Verify it's our patched version
+    # Verify it's our patched version that preserves case for all queries
     assert handler.__name__ == "_query_clickhouse_patched"
 
 
 @pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
-def test_clickhouse_specific_keywords_defined(module_under_test):
-    """Test that ClickHouse-specific keywords are defined."""
-    assert hasattr(module_under_test, "CLICKHOUSE_SPECIFIC_KEYWORDS")
-    keywords = module_under_test.CLICKHOUSE_SPECIFIC_KEYWORDS
-
-    # Verify expected keywords are present
-    assert "ARRAY JOIN" in keywords
-    assert "FINAL" in keywords
-    assert "GLOBAL JOIN" in keywords
-
-
-@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
-def test_array_join_uses_command_wrapper(module_under_test):
-    """Test that queries with ARRAY JOIN use Command wrapper (bypass parsing)."""
-    from sqlglot import exp
-
-    # Get the handler function directly
-    handler = module_under_test._query_clickhouse_patched
-
-    # Create minimal mock with just the query attribute
-    mock_op = mock.Mock()
-    mock_op.query = """
-        SELECT col1, item
-        FROM table1
-        ARRAY JOIN array_col AS item
-        WHERE col1 > 10
-    """
-
-    # Call handler directly
-    aliases = {mock_op: "_test_alias"}
-    result = handler(mock_op, aliases=aliases)
-
-    # Verify it returns a Subquery
-    assert isinstance(result, exp.Subquery)
-
-    # Verify it uses Command (bypass parsing for ARRAY JOIN)
-    assert isinstance(result.this, exp.Command)
-
-    # Light verification: alias is applied
-    result_sql = result.sql(dialect="clickhouse")
-    assert "_test_alias" in result_sql
-
-
-@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
-def test_standard_sql_uses_parsed_select(module_under_test):
-    """Test that standard SQL without ClickHouse syntax uses normal parsing."""
-    from sqlglot import exp
-
-    # Get the handler function directly
-    handler = module_under_test._query_clickhouse_patched
-
-    # Create mock with standard SQL (no ClickHouse-specific syntax)
-    mock_op = mock.Mock()
-    mock_op.query = """
-        SELECT col1, col2
-        FROM table1
-        WHERE col1 > 10
-    """
-
-    # Call handler directly
-    aliases = {mock_op: "_standard_alias"}
-    result = handler(mock_op, aliases=aliases)
-
-    # Verify it returns a Subquery
-    assert isinstance(result, exp.Subquery)
-
-    # Verify it uses parsed Select (not Command)
-    assert isinstance(result.this, exp.Select)
-
-
-@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
-def test_final_modifier_uses_command_wrapper(module_under_test):
-    """Test that queries with FINAL modifier use Command wrapper."""
+def test_all_queries_use_command_wrapper(module_under_test):
+    """Test that all queries use Command wrapper to preserve exact SQL."""
     from sqlglot import exp
 
     handler = module_under_test._query_clickhouse_patched
 
-    mock_op = mock.Mock()
-    mock_op.query = """
-        SELECT col1, col2
-        FROM table1 FINAL
-        WHERE col1 > 10
-    """
+    # Test with various query types - all should use Command
+    queries = [
+        "SELECT col1, col2 FROM table1 WHERE col1 > 10",
+        "SELECT col1, item FROM table1 ARRAY JOIN array_col AS item",
+        "SELECT * FROM table1 FINAL WHERE date = today()",
+        "SELECT t1.id FROM table1 t1 GLOBAL JOIN table2 t2 ON t1.id = t2.id",
+    ]
 
-    aliases = {mock_op: "_final_alias"}
-    result = handler(mock_op, aliases=aliases)
+    for query in queries:
+        mock_op = mock.Mock()
+        mock_op.query = query
+        result = handler(mock_op, aliases={mock_op: "_"})
 
-    # Verify Command is used (bypass parser for FINAL)
-    assert isinstance(result, exp.Subquery)
-    assert isinstance(result.this, exp.Command)
-
-
-@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
-def test_global_join_uses_command_wrapper(module_under_test):
-    """Test that queries with GLOBAL JOIN use Command wrapper."""
-    from sqlglot import exp
-
-    handler = module_under_test._query_clickhouse_patched
-
-    mock_op = mock.Mock()
-    mock_op.query = """
-        SELECT t1.col1, t2.col2
-        FROM table1 t1
-        GLOBAL INNER JOIN table2 t2 ON t1.id = t2.id
-    """
-
-    aliases = {mock_op: "_global_alias"}
-    result = handler(mock_op, aliases=aliases)
-
-    # Verify Command is used (bypass parser for GLOBAL JOIN)
-    assert isinstance(result, exp.Subquery)
-    assert isinstance(result.this, exp.Command)
-
-
-@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
-def test_case_insensitive_keyword_detection(module_under_test):
-    """Test that keyword detection is case-insensitive."""
-    from sqlglot import exp
-
-    handler = module_under_test._query_clickhouse_patched
-
-    # Test with lowercase "array join"
-    mock_op = mock.Mock()
-    mock_op.query = "SELECT * FROM table array join array_col AS item"
-
-    result = handler(mock_op, aliases={})
-
-    # Should still detect and use Command
-    assert isinstance(result.this, exp.Command)
-
-
-@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
-def test_complex_query_with_cte_and_array_join(module_under_test):
-    """Test complex query with CTE and ARRAY JOIN."""
-    from sqlglot import exp
-
-    handler = module_under_test._query_clickhouse_patched
-
-    mock_op = mock.Mock()
-    mock_op.query = """
-        WITH raw_data AS (
-            SELECT project_id, labels, report
-            FROM source_table
-        )
-        SELECT
-            project_id,
-            report_value.cost AS cost
-        FROM raw_data AS T
-        ARRAY JOIN T.report AS report_value
-        WHERE T.project_id = 'test-project'
-    """
-
-    aliases = {mock_op: "_complex_alias"}
-    result = handler(mock_op, aliases=aliases)
-
-    # Verify successful translation with Command wrapper
-    assert isinstance(result, exp.Subquery)
-    assert isinstance(result.this, exp.Command)
+        # All queries should return Subquery with Command (no parsing)
+        assert isinstance(result, exp.Subquery)
+        assert isinstance(result.this, exp.Command)
 
 
 @pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
@@ -304,3 +171,44 @@ def test_case_sensitivity_with_final_modifier(module_under_test):
     # Verify case preservation
     assert "analyticsDB.events" in result_sql
     assert "ANALYTICSDB.EVENTS" not in result_sql
+
+
+@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
+def test_function_names_case_preserved(module_under_test):
+    """Test that lowercase function names are preserved (not uppercased).
+
+    ClickHouse functions are case-sensitive: any() exists but ANY() does not.
+    This test verifies the fix for the issue where DVT was uppercasing
+    function names, causing queries to fail in ClickHouse.
+    """
+
+    handler = module_under_test._query_clickhouse_patched
+
+    # Test various ClickHouse functions with their correct lowercase names
+    mock_op = mock.Mock()
+    mock_op.query = """
+        SELECT
+            any(service_description) AS service,
+            sum(cost) AS total_cost,
+            arraySum(arr_col) AS arr_total,
+            toDateTime(timestamp) AS dt
+        FROM table1
+        GROUP BY project_id
+    """
+
+    aliases = {mock_op: "_"}
+    result = handler(mock_op, aliases=aliases)
+
+    result_sql = result.sql(dialect="clickhouse")
+
+    # Verify lowercase function names are preserved (not uppercased)
+    assert "any(service_description)" in result_sql
+    assert "sum(cost)" in result_sql
+    assert "arraySum(arr_col)" in result_sql
+    assert "toDateTime(timestamp)" in result_sql
+
+    # Verify they were NOT uppercased
+    assert "ANY(service_description)" not in result_sql
+    assert "SUM(cost)" not in result_sql
+    assert "ARRAYSUM(arr_col)" not in result_sql
+    assert "TODATETIME(timestamp)" not in result_sql
