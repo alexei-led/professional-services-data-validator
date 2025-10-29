@@ -49,7 +49,13 @@ def _setup_session_requirements(session, extra_packages=[]):
     """Install requirements for nox tests."""
 
     session.install(
-        "--upgrade", "pip", "pytest", "pytest-cov", "pytest-timeout", "wheel"
+        "--upgrade",
+        "pip",
+        "pytest",
+        "pytest-cov",
+        "pytest-timeout",
+        "pytest-xdist",
+        "wheel",
     )
     session.install("--no-cache-dir", "-e", ".")
 
@@ -63,8 +69,11 @@ def unit(session):
     _setup_session_requirements(session, extra_packages=UNIT_PACKAGES)
 
     # Run py.test against the unit tests.
+    # -n auto enables parallel test execution using all available CPU cores
     session.run(
         "py.test",
+        "-n",
+        "auto",
         "--quiet",
         "--cov=data_validation",
         "--cov=tests.unit",

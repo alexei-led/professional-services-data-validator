@@ -18,7 +18,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install black==22.3.0 flake8 pytest pytest-cov pyfakefs freezegun
+          pip install black==22.3.0 flake8 pytest pytest-cov pytest-xdist pyfakefs freezegun
           pip install -e .
       - name: Black
         run: black --check data_validation samples tests third_party noxfile.py setup.py
@@ -27,4 +27,6 @@ jobs:
           flake8 data_validation
           flake8 tests
       - name: Tests
-        run: pytest tests/unit -k "not test_bigquery" --tb=short
+        env:
+          TZ: UTC
+        run: pytest tests/unit -n auto -k "not test_bigquery" --tb=short
