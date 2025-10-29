@@ -212,3 +212,51 @@ def test_function_names_case_preserved(module_under_test):
     assert "SUM(cost)" not in result_sql
     assert "ARRAYSUM(arr_col)" not in result_sql
     assert "TODATETIME(timestamp)" not in result_sql
+
+
+@pytest.mark.skipif(not get_module_under_test(), reason="No ClickHouse driver")
+def test_real_world_query_from_issue(module_under_test):
+    """Test the actual query that was failing before the fix.
+
+    This is the real-world query from the issue report that includes:
+    - any(), sum(), arraySum(), toDateTime(), hasAny()
+    - Nested functions: sum(arraySum(...))
+    - Complex WHERE conditions
+
+    Before fix: Would uppercase to ANY(), ARRAYSUM(), TODATETIME(), HASANY()
+    After fix: Preserves exact case
+    """
+
+    handler = module_under_test._query_clickhouse_patched
+
+    mock_op = mock.Mock()
+    mock_op.query = """
+        SELECT
+            service_id,
+            any(service_description) as service,
+            usage_month,
+            sum(arraySum(report.cost)) as cost
+        FROM smorodin.zoominfo
+        WHERE customer_id = 'm3nFiMlthpifIZ4fJkTt'
+            AND usage_date_time >= toDateTime('2025-08-13')
+            AND hasAny(labels_flat, ['user:role=test'])
+        GROUP BY service_id, usage_month
+        ORDER BY service, usage_month
+    """
+
+    aliases = {mock_op: "_"}
+    result = handler(mock_op, aliases=aliases)
+
+    result_sql = result.sql(dialect="clickhouse")
+
+    # Verify all function names preserved exactly
+    assert "any(service_description)" in result_sql
+    assert "arraySum(report.cost)" in result_sql  # Nested in sum()
+    assert "toDateTime('2025-08-13')" in result_sql
+    assert "hasAny(labels_flat" in result_sql
+
+    # Verify none were uppercased (this would cause ClickHouse errors)
+    assert "ANY(service_description)" not in result_sql
+    assert "ARRAYSUM(" not in result_sql
+    assert "TODATETIME(" not in result_sql
+    assert "HASANY(" not in result_sql
